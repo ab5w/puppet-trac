@@ -17,7 +17,7 @@ Example usage;
 
 	# Set the global config.
     	Trac {
-        	alt => "Paragon Internet Group",
+        	alt => "alt text",
         	cc => "user@domain.com",
         	url => "https://domain.com",
         	repobase => "/srv/svn",
@@ -46,7 +46,7 @@ Example usage;
     		adminuser => "admin user";
     	}
 
-	    subversion::svnrepo{'triglav': 
+	    subversion::svnrepo{'sitename': 
 		    owner => 'www-data',
 		    group => 'www-data',
 		}
