@@ -1,3 +1,7 @@
-<Location "/cgi-bin/<%= name %>.cgi">
-    SetEnv TRAC_ENV "<%= tracdir %>" 
-</Location> 
+<Location />
+   SetHandler mod_python
+   PythonInterpreter main_interpreter
+   PythonHandler trac.web.modpython_frontend
+   PythonOption TracEnvParentDir <%= basedir %>
+   PythonOption TracUriRoot /
+</Location>

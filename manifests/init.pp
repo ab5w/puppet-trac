@@ -29,6 +29,7 @@
 #            description => "Puppet - Portable System Automation",
 #            cc => "puppet-dev@madstop.com";
 #   }
+
 define trac(
     $basedir = "/export/svn/trac",
     $repository = false,
@@ -38,20 +39,21 @@ define trac(
     $cc,
     $description,
     $db = "sqlite:db/trac.db",
-    $owner = "www-data",
-    $group = "www-data",
+    $owner = "root",
+    $group = "apache",
     $url,
     $repobase,
     $cgidir,
     $replyto = "trac@$domain",
     $from = "trac@$domain",
-    $logo = "/images/traclogo.png",
     $alt = $domain,
     $smtpserver = "mail.$domain",
     $repostype = "svn",
-    $apache = false
+    $apache = false,
+    $adminuser,
 ) {
-    $repo = $repository ? {
+
+        $repo = $repository ? {
         false => "$repobase/$name",
         default => $repository
     }
@@ -59,57 +61,68 @@ define trac(
     $tracdir = "$basedir/$name"
     $config = "$tracdir/conf/trac.ini"
 
-    $anon_permissions = "BROWSER_VIEW CHANGESET_VIEW FILE_VIEW LOG_VIEW MILESTONE_VIEW REPORT_SQL_VIEW REPORT_VIEW ROADMAP_VIEW SEARCH_VIEW TICKET_VIEW TIMELINE_VIEW WIKI_VIEW"
-    $authenticated_permissions = "anonymous TICKET_APPEND TICKET_CHGPROP TICKET_CREATE_SIMPLE TICKET_MODIFY WIKI_CREATE WIKI_MODIFY"
-    $developer_permissions = "TRAC_ADMIN"
-
     # Create the app
+    
     exec { "tracinit-$name":
-        command => "trac-admin $tracdir initenv $name $db $repostype $repo $templates",
+        command => "trac-admin $tracdir initenv $name $db $repostype $repo",
         path => "/usr/bin:/bin:/usr/sbin",
         logoutput => false,
         creates => $config
     }
 
-    # Chown it to www-data
+    # Chown it to httpd user/group.
+    
     file { $tracdir:
         owner => $owner,
         group => $group,
         recurse => true,
+        mode => 755,
         require => Exec["tracinit-$name"]
     }
 
-    # Rewrite the config
+    file { "$tracdir/db":
+        owner => $owner,
+        group => $group,
+        recurse => true,
+    }
+
+    # Create the config files.
+
     file { $config:
         owner => $owner,
         group => $group,
+        mode => 755,
         content => template("trac/tracconfig.erb"),
         require => Exec["tracinit-$name"]
     }
 
-#    exec { "init-$name-trac-authenticated-permissions":
-#        command => "trac-admin $tracdir permission add authenticated $authenticated_permissions",
-#        refreshonly => true,
-#        subscribe => Exec["tracinit-$name"],
-#    }
-#
-#    exec { "init-$name-trac-dev-permissions":
-#        command => "trac-admin $tracdir permission add developer $developer_permissions",
-#        refreshonly => true,
-#        subscribe => Exec["tracinit-$name"],
-#    }
-#
-#    exec { "init-$name-trac-anon-permissions":
-#        command => "trac-admin $tracdir permission remove $anon_permissions",
-#        refreshonly => true,
-#        subscribe => Exec["tracinit-$name"],
-#    }
-
-    # Now create the apache config
-    if $apache {
-        tracsite { $name:
-            tracdir => $tracdir,
-            cgidir => $cgidir
-        }
+    if $::osfamily == 'redhat' {
+            file { "trac-$name":
+            path => "/etc/httpd/trac/$name.conf",
+            owner => $owner,
+            group => $group,
+            mode => 644,
+            content => template("trac/tracsite.erb"),
+            notify => Service[httpd] # notify apache that it should restart
+            }
+    } elsif $::osfamily == 'debian' {
+            file { "trac-$name":
+            path => "/etc/apache2/trac/$name.conf",
+            owner => $owner,
+            group => $group,
+            mode => 644,
+            content => template("trac/tracsite.erb"),
+            notify => Service[httpd] # notify apache that it should restart
+            }
     }
+
+    # Add the admin user.
+
+    exec { "tracinit-$name-$adminuser":
+        command => "trac-admin /srv/trac/$name permission add $adminuser TRAC_ADMIN",
+        path => "/usr/bin:/bin:/usr/sbin",
+        unless => "trac-admin /srv/trac/$name permission list | grep TRAC_ADMIN | grep $adminuser",
+    }
+
+      
 }
